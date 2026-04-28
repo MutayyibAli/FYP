@@ -150,59 +150,6 @@ class Preprocessor:
 
         return patient_spacings  # Returns a list of 4 spacings
 
-    def collect_intensities(self):
-        intensities_dicts = self.run_parallel(self.get_intensities)
-        intensities = {}
-        for mod in self.modalities:
-            # Chain the intensity values from all patients for the current modality into a single list.
-            intensities[mod] = list(
-                itertools.chain(*[d[mod] for d in intensities_dicts])
-            )
-            # Calculate the 0.5th and 99.5th percentiles to determine the minimum and maximum intensity values for normalization,
-            # and calculate the mean and standard deviation for further normalization steps.
-            self.ct_min[mod] = np.percentile(intensities[mod], [0.5, 99.5])[0]
-            self.ct_max[mod] = np.percentile(intensities[mod], [0.5, 99.5])[1]
-            self.ct_mean[mod] = np.mean(intensities[mod])
-            self.ct_std[mod] = np.std(intensities[mod])
-
-    def get_intensities(self, pt_id):
-        intensity = {}
-        # Loop through each modality for the patient and load the corresponding image and label to extract intensity values.
-        for mod in self.modalities:
-            image = (
-                nibabel.load(
-                    os.path.join(
-                        self.data_path,
-                        f"BraTS2021_{pt_id}",
-                        f"BraTS2021_{pt_id}_{mod}.nii.gz",
-                    )
-                )
-                .get_fdata()
-                .astype(np.float32)
-            )
-            label = (
-                nibabel.load(
-                    os.path.join(
-                        self.data_path,
-                        f"BraTS2021_{pt_id}",
-                        f"BraTS2021_{pt_id}_seg.nii.gz",
-                    )
-                )
-                .get_fdata()
-                .astype(np.uint8)
-            )
-            # Extract brain region
-            foreground_area = np.where(label > 0)
-            # Store the intensity values of the brain region for the current modality in the intensity dictionary as a list.
-            intensity[mod] = image[foreground_area].tolist()
-        return intensity
-
-    # Runs a function in parallel across multiple patient IDs.
-    def run_parallel(self, func):
-        return Parallel(n_jobs=os.cpu_count())(
-            delayed(func)(pt_id) for pt_id in self.pt_ids
-        )
-
     @staticmethod
     def get_image_spacing(image):
         return image.header["pixdim"][1:4].tolist()[::-1]
