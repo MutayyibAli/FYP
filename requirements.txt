@@ -4,3 +4,5 @@ scikit-learn == 1.8.0 # For machine learning algorithms and tools
 matplotlib == 3.10.8 # For plotting and visualization
 plotly == 6.7.0 # For interactive plotting and visualization
 nibabel == 5.4.2 # For reading and writing neuro-imaging data formats
+monai == 1.5.2 # For medical imaging deep learning
+scikit-image == 0.21.0 # For image processing tasks
