@@ -2,17 +2,6 @@ import json
 import os
 
 
-def load_config(type):
-    with open(f"config/{type}.json", "r") as f:
-        config = json.load(f)
-    return config
-
-
-def save_config(config, type):
-    with open(f"config/{type}.json", "w") as f:
-        json.dump(config, f)
-
-
 def get_patient_ids(data_path):
     # List all patient directories in the data path.
     patients = [

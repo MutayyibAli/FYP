@@ -3,19 +3,14 @@ from joblib import Parallel, delayed  # For parallel processing of tasks
 import nibabel  # For loading medical imaging data
 import numpy as np  # For numerical operations
 import itertools  # For chaining lists together
-import monai  # For medical imaging transformations and utilities
-import skimage  # For image processing tasks
-
-from utils.utils import get_patient_ids
 
 
 class Preprocessor:
-    def __init__(self, pt_ids=None):
-        self.data_path = "./.raw/BraTS2021_Training_Data"
-        self.output_path = "./.processed"
+    def __init__(self, data_path, output_path, pt_ids):
+        self.data_path = "./" + data_path
+        self.output_path = "./" + output_path
         self.pt_ids = pt_ids
         self.modalities = ["t1", "t1ce", "t2", "flair"]
-        self.target_spacing = None
         self.ct_min = {"t1": 0, "t1ce": 0, "t2": 0, "flair": 0}
         self.ct_max = {"t1": 0, "t1ce": 0, "t2": 0, "flair": 0}
         self.ct_mean = {"t1": 0, "t1ce": 0, "t2": 0, "flair": 0}
@@ -23,13 +18,6 @@ class Preprocessor:
 
     def run(self):
         """Entry point for the preprocessor. This method will be called to start the preprocessing steps."""
-
-        # Create directory for output of processed files if it does not exist.
-        if not os.path.exists(".processed"):
-            os.makedirs(".processed")
-
-        # Get the list of patients ids from the data directory.
-        self.pt_ids = get_patient_ids(self.data_path)
 
         # Collect intensity statistics from the medical images to determine normalization parameters.
         self.collect_intensities()
@@ -98,25 +86,29 @@ class Preprocessor:
                 )
             )
             images[mod] = image
-            
+
         img_header = images["t1"].header
         img_affine = images["t1"].affine
         img_data = image.get_fdata().astype(np.float32)
 
-            normalized_img_data = self.normalize(img_data, mod)
+        normalized_data = {}
+        for mod in self.modalities:
+            normalized_data[mod] = self.normalize(img_data, mod)
 
-            normalized_image = nibabel.Nifti1Image(
-                normalized_img_data, img_affine, header=img_header
-            )
+        channels_data = np.stack(
+            [normalized_data[mod] for mod in self.modalities], axis=-1
+        )
 
-            nibabel.save(
-                normalized_image,
-                os.path.join(
-                    self.output_path,
-                    f"BraTS2021_{pt_id}",
-                    f"BraTS2021_{pt_id}_{mod}.nii.gz",
-                ),
-            )
+        channels_img = nibabel.Nifti1Image(channels_data, img_affine, header=img_header)
+
+        nibabel.save(
+            channels_img,
+            os.path.join(
+                self.output_path,
+                f"BraTS2021_{pt_id}",
+                f"BraTS2021_{pt_id}.nii.gz",
+            ),
+        )
 
         # Load the label image for the patient
         label = nibabel.load(
