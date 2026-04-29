@@ -87,6 +87,7 @@ class Preprocessor:
 
         os.makedirs(os.path.join(self.output_path, f"BraTS2021_{pt_id}"))
 
+        images = {}
         for mod in self.modalities:
             # Load the image for the current modality and patient
             image = nibabel.load(
@@ -96,9 +97,11 @@ class Preprocessor:
                     f"BraTS2021_{pt_id}_{mod}.nii.gz",
                 )
             )
-            img_header = image.header
-            img_affine = image.affine
-            img_data = image.get_fdata().astype(np.float32)
+            images[mod] = image
+            
+        img_header = images["t1"].header
+        img_affine = images["t1"].affine
+        img_data = image.get_fdata().astype(np.float32)
 
             normalized_img_data = self.normalize(img_data, mod)
 
