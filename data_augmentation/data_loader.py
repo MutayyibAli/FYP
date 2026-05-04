@@ -1,56 +1,59 @@
 import os
 import numpy as np
 import nibabel
-from scipy.ndimage import zoom, gaussian_filter
+import scipy
+import torch
 
 
-class Dataloader:
+class BraTSDataset(torch.utils.data.Dataset):
     def __init__(self, data_path, pt_ids, isTraining=True):
         self.data_path = "./" + data_path
         self.pt_ids = pt_ids
         self.isTraining = isTraining
-        self.crop_size = (128, 128, 128)
 
-    def load(self):
-        dataset = []
-        for pt_id in self.pt_ids:
-            img_path = os.path.join(
-                self.data_path, f"BraTS2021_{pt_id}", f"BraTS2021_{pt_id}.nii.gz"
-            )
-            lbl_path = os.path.join(
-                self.data_path, f"BraTS2021_{pt_id}", f"BraTS2021_{pt_id}_seg.nii.gz"
-            )
+    def __len__(self):
+        # PyTorch needs to know how many total patients there are
+        return len(self.pt_ids)
 
-            image = nibabel.load(img_path).get_fdata().astype(np.float32)
-            label = nibabel.load(lbl_path).get_fdata().astype(np.uint8)
+    def __getitem__(self, idx):
+        pt_id = self.pt_ids[idx]
 
-            # APPLY AUGMENTATIONS
-            if self.isTraining:
-                # 1. Biased Crop
-                # image, label = self._biased_crop(image, label)
-                # 2. Zoom
-                image, label = self._apply_zoom(image, label)
-                # 3. Flips
-                image, label = self._apply_flips(image, label)
-                # 4. Gaussian Noise
-                image = self._apply_gaussian_noise(image)
-                # 5. Gaussian Blur
-                image = self._apply_gaussian_blur(image)
-                # 6. Brightness
-                image = self._apply_brightness(image)
-                # 7. Contrast
-                image = self._apply_contrast(image)
-            else:
-                # If testing/validating, apply standard center crop to match dimensions
-                image, label = self._center_crop(image, label)
+        img_path = os.path.join(
+            self.data_path, f"BraTS2021_{pt_id}", f"BraTS2021_{pt_id}.nii.gz"
+        )
+        lbl_path = os.path.join(
+            self.data_path, f"BraTS2021_{pt_id}", f"BraTS2021_{pt_id}_seg.nii.gz"
+        )
 
-            dataset.append({"x": image, "y": label})
-        return dataset
+        image = nibabel.load(img_path).get_fdata().astype(np.float32)
+        label = nibabel.load(lbl_path).get_fdata().astype(np.uint8)
+
+        # APPLY AUGMENTATIONS
+        if self.isTraining:
+            # 1. Biased Crop
+            image, label = self._biased_crop(image, label)
+            # 2. Zoom
+            image, label = self._apply_zoom(image, label)
+            # 3. Flips
+            image, label = self._apply_flips(image, label)
+            # 4. Gaussian Noise
+            image = self._apply_gaussian_noise(image)
+            # 5. Gaussian Blur
+            image = self._apply_gaussian_blur(image)
+            # 6. Brightness
+            image = self._apply_brightness(image)
+            # 7. Contrast
+            image = self._apply_contrast(image)
+        else:
+            # If testing/validating, apply standard center crop to match dimensions
+            image, label = self._center_crop(image, label)
+
+        return torch.from_numpy(image), torch.from_numpy(label)
 
     def _biased_crop(self, image, label):
         """1. Biased crop with 0.4 prob to guarantee foreground."""
         _, d, h, w = image.shape
-        cd, ch, cw = self.crop_size
+        cd, ch, cw = (128, 128, 128)
 
         if np.random.rand() < 0.4 and np.any(label > 0):
             fg_indices = np.argwhere(label > 0)
@@ -91,7 +94,7 @@ class Dataloader:
     def _center_crop(self, image, label):
         """Helper for validation consistency."""
         _, d, h, w = image.shape
-        cd, ch, cw = self.crop_size
+        cd, ch, cw = (128, 128, 128)
 
         z_start = (d - cd) // 2
         y_start = (h - ch) // 2
@@ -122,12 +125,12 @@ class Dataloader:
             zoom_tuple = (1.0, zoom_factor, zoom_factor, zoom_factor)
 
             # Cubic interpolation (order=3) for image, Nearest Neighbor (order=0) for label
-            image = zoom(image, zoom_tuple, order=3, mode="nearest")
+            image = scipy.ndimage.zoom(image, zoom_tuple, order=3, mode="nearest")
 
             if label.ndim == 4:
-                label = zoom(label, zoom_tuple, order=0, mode="nearest")
+                label = scipy.ndimage.zoom(label, zoom_tuple, order=0, mode="nearest")
             else:
-                label = zoom(
+                label = scipy.ndimage.zoom(
                     label,
                     (zoom_factor, zoom_factor, zoom_factor),
                     order=0,
@@ -143,10 +146,10 @@ class Dataloader:
         """3. Flips (0.5 prob per axis)."""
         # Axes for D, H, W (skipping Channel at index 0)
         axes = (
-            [1, 2, 3] if label.ndim == 4 else [1, 2, 3]
+            [2, 3, 4] if label.ndim == 4 else [1, 2, 3]
         )  # assuming label spatial dims map correctly
 
-        for axis_idx, axis in enumerate([1, 2, 3]):
+        for axis in axes:
             if np.random.rand() < 0.5:
                 image = np.flip(image, axis=axis)
                 lbl_axis = axis if label.ndim == 4 else axis - 1
@@ -168,7 +171,7 @@ class Dataloader:
         if np.random.rand() < 0.15:
             sigma = np.random.uniform(0.5, 1.5)
             # Apply blur to spatial dimensions, not the channel dimension
-            image = gaussian_filter(image, sigma=(0, sigma, sigma, sigma))
+            image = scipy.ndimage.gaussian_filter(image, sigma=(0, sigma, sigma, sigma))
         return image
 
     def _apply_brightness(self, image):

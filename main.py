@@ -4,7 +4,7 @@ import os  # Import os library for file and directory operations
 import sklearn  # Import scikit-learn for data splitting
 
 from data_preprocessing.preprocessor import Preprocessor
-from data_augmentation.data_loader import Dataloader
+from data_augmentation.data_loader import BraTSDataset
 from utils.utils import get_patient_ids
 
 
@@ -28,13 +28,26 @@ def main():
         start = time.time()
         Preprocessor(raw_path, data_path, pt_ids).run()
         end = time.time()
+        # 5 minutes
         print(f"Preprocessing time: {end - start} seconds")
+    else:
+        print("Preprocessed data already exists. Skipping preprocessing step.")
 
     train_ids, val_ids = sklearn.model_selection.train_test_split(
         pt_ids, test_size=0.2, random_state=123
     )
 
-    training_dataset = Dataloader(data_path, train_ids, isTraining=True).load()
+    training_dataset = BraTSDataset(data_path, train_ids, isTraining=True)
+    train_loader = torch.utils.data.DataLoader(
+        training_dataset, batch_size=2, shuffle=True
+    )
+    validation_dataset = BraTSDataset(data_path, val_ids, isTraining=False)
+    val_loader = torch.utils.data.DataLoader(
+        validation_dataset, batch_size=2, shuffle=False
+    )
+
+    for batch_image, batch_label in train_loader:
+        pass
 
 
 def initial_setup():

@@ -96,10 +96,12 @@ class Preprocessor:
             normalized_data[mod] = self.normalize(img_data, mod)
 
         channels_data = np.stack(
-            [normalized_data[mod] for mod in self.modalities], axis=-1
+            [normalized_data[mod] for mod in self.modalities], axis=0
         )
 
-        channels_img = nibabel.Nifti1Image(channels_data, img_affine, header=img_header)
+        channels_img = nibabel.Nifti1Image(
+            channels_data.astype(np.float32), img_affine, header=img_header
+        )
 
         nibabel.save(
             channels_img,
@@ -125,7 +127,9 @@ class Preprocessor:
         # This ensures classes are [0, 1, 2, 3] instead of [0, 1, 2, 4]
         lbl_data[lbl_data == 4] = 3
 
-        ohc_label = nibabel.Nifti1Image(lbl_data, lbl_affine, header=lbl_header)
+        ohc_label = nibabel.Nifti1Image(
+            lbl_data.astype(np.uint8), lbl_affine, header=lbl_header
+        )
         nibabel.save(
             ohc_label,
             os.path.join(
