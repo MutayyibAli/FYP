@@ -1,7 +1,7 @@
 # Ignore Raw data
-.raw
-.processed
-.training
+raw
+processed
+training
 
 *.pth
 
