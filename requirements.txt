@@ -3,4 +3,6 @@ scikit-learn == 1.8.0 # For machine learning algorithms and tools
 matplotlib == 3.10.8 # For plotting and visualization
 nibabel == 5.4.2 # For reading and writing neuro-imaging data formats
 monai == 1.5.2 # For medical imaging deep learning
+scipy == 1.17.1 # For scientific computing and image processing
 tqdm == 4.67.3 # For progress bars
+optuna == 4.8.0 # For hyperparameter optimization

@@ -1,122 +1,72 @@
 import os
-import nibabel as nib
-import numpy as np
-import torch
-import matplotlib
-
-matplotlib.use("Agg")  # Required to generate plots without a display server
-import matplotlib.pyplot as plt
-from flask import Flask, render_template, request, url_for
-from werkzeug.utils import secure_filename
-
-# Optional: Import your model class from your model.py file
-# from model import nnUNet
+import shutil
+import time
+from flask import Flask, render_template, request, jsonify, url_for
 
 app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = "uploads"
-app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB max upload limit
-os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 
 # ---------------------------------------------------------
-# MODEL INITIALIZATION (Mocked for demonstration)
+# Define your analyze function here
 # ---------------------------------------------------------
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# Replace this with your actual model initialization and weights loading
-# model = nnUNet(in_channels=4, out_channels=4).to(device)
-# model.load_state_dict(torch.load('best_model.pth', map_location=device))
-# model.eval()
+def analyse():
+    """
+    Your custom analysis function.
+    Currently, it simulates a long-running process and returns a path to an image.
+    """
+    time.sleep(3)  # Simulating processing time
+
+    # Return the path to the resulting image.
+    # For now, it points to a placeholder image in the static folder.
+    return url_for("static", filename="result.png")
 
 
-def save_nifti_slice_as_png(nifti_path, output_filename, is_mask=False):
-    """Loads a 3D NIfTI file, extracts the middle axial slice, and saves it as a PNG."""
-    if not nifti_path or not os.path.exists(nifti_path):
-        return None
-
-    img_data = nib.load(nifti_path).get_fdata()
-
-    # Grab the middle slice along the Z-axis (Depth)
-    z_mid = img_data.shape[2] // 2
-    slice_2d = img_data[:, :, z_mid]
-
-    # Plot and save as PNG
-    plt.figure(figsize=(5, 5))
-    if is_mask:
-        # Use a distinct colormap for masks
-        plt.imshow(slice_2d.T, cmap="viridis", origin="lower")
-    else:
-        # Use grayscale for standard MRI scans
-        plt.imshow(slice_2d.T, cmap="gray", origin="lower")
-
-    plt.axis("off")
-    plt.tight_layout(pad=0)
-    out_path = os.path.join(app.config["UPLOAD_FOLDER"], output_filename)
-    plt.savefig(out_path, bbox_inches="tight", pad_inches=0, transparent=True)
-    plt.close()
-
-    return output_filename
-
-
-@app.route("/", methods=["GET", "POST"])
+# ---------------------------------------------------------
+# Routes
+# ---------------------------------------------------------
+@app.route("/")
 def index():
-    if request.method == "POST":
-        files = {
-            "flair": request.files.get("flair"),
-            "t1": request.files.get("t1"),
-            "t1ce": request.files.get("t1ce"),
-            "t2": request.files.get("t2"),
-            "gt": request.files.get("gt"),  # Ground truth is optional
-        }
+    return render_template("index.html")
 
-        # Save uploaded files to the uploads directory
-        saved_paths = {}
-        for key, file in files.items():
-            if file and file.filename != "":
-                filename = secure_filename(file.filename)
-                filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-                file.save(filepath)
-                saved_paths[key] = filepath
-            else:
-                saved_paths[key] = None
 
-        # 1. Convert Modalities and GT to PNG for web display
-        display_images = {}
-        for key in ["flair", "t1", "t1ce", "t2"]:
-            if saved_paths[key]:
-                display_images[key] = save_nifti_slice_as_png(
-                    saved_paths[key], f"{key}_slice.png", is_mask=False
-                )
+@app.route("/upload", methods=["POST"])
+def upload_files():
+    # 1. Check if all 4 required modalities are present
+    required_mods = ["flair", "t1", "t1ce", "t2"]
+    for mod in required_mods:
+        if mod not in request.files or request.files[mod].filename == "":
+            return jsonify({"error": f"Missing required modality: {mod.upper()}"}), 400
 
-        if saved_paths["gt"]:
-            display_images["gt"] = save_nifti_slice_as_png(
-                saved_paths["gt"], "gt_slice.png", is_mask=True
-            )
+    # 2. Clear the uploads folder before saving
+    if os.path.exists(UPLOAD_FOLDER):
+        shutil.rmtree(UPLOAD_FOLDER)
+    os.makedirs(UPLOAD_FOLDER)
 
-        # 2. RUN INFERENCE (Pseudo-code for PyTorch)
-        # In reality, you will load the 4 modalities, stack them, pad to 160 depth, and feed to the model
-        """
-        if all([saved_paths['flair'], saved_paths['t1'], saved_paths['t1ce'], saved_paths['t2']]):
-            with torch.no_grad():
-                # stack your data into shape (1, 4, H, W, D) -> feed to model -> argmax
-                # prediction_mask = model(stacked_tensor).argmax(dim=1).squeeze().cpu().numpy()
-                
-                # Mocking the output save process:
-                # pred_nifti = nib.Nifti1Image(prediction_mask, affine=np.eye(4))
-                # nib.save(pred_nifti, 'static/uploads/pred.nii.gz')
-                # display_images['pred'] = save_nifti_slice_as_png('static/uploads/pred.nii.gz', "pred_slice.png", is_mask=True)
-        """
+    # 3. Save the required files
+    for mod in required_mods:
+        file = request.files[mod]
+        file.save(os.path.join(UPLOAD_FOLDER, file.filename))
 
-        # MOCK PREDICTION FOR NOW (So the app runs without crashing before your model is linked)
-        if saved_paths["flair"]:
-            # Pretending the ground truth or flair is the prediction for visual sake
-            display_images["pred"] = save_nifti_slice_as_png(
-                saved_paths["flair"], "pred_slice.png", is_mask=True
-            )
+    # 4. Save optional ground truth if provided
+    if "ground_truth" in request.files and request.files["ground_truth"].filename != "":
+        gt_file = request.files["ground_truth"]
+        gt_file.save(os.path.join(UPLOAD_FOLDER, gt_file.filename))
 
-        return render_template("index.html", images=display_images)
+    return jsonify({"message": "Files uploaded successfully!"}), 200
 
-    # For GET requests, just show the form
-    return render_template("index.html", images=None)
+
+@app.route("/analyze", methods=["POST"])
+def run_analysis():
+    try:
+        # Call the custom function
+        result_image_url = analyse()
+        return jsonify({"image_url": result_image_url}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True)
