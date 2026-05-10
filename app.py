@@ -83,7 +83,7 @@ def upload_files():
     # 4. Save optional ground truth safely
     if "ground_truth" in request.files and request.files["ground_truth"].filename != "":
         gt_file = request.files["ground_truth"]
-        filename = secure_filename(f"ground_truth.nii.gz")
+        filename = secure_filename("ground_truth.nii.gz")
         gt_file.save(os.path.join(UPLOAD_FOLDER, filename))
 
     return jsonify({"message": "Files uploaded successfully!"}), 200
